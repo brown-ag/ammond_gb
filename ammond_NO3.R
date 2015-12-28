@@ -12,22 +12,24 @@ scalez=corez$rec[foo$CORE]
 intervalz=foo$BDEPTH-foo$TDEPTH
 sintervalz=intervalz/scalez
 depthz=cumsum(sintervalz)
+foo=cbind(foo,depthz)
 
 #convert Non-detectable into zero values
 foo$NO3[which(foo$NO3=="ND")] = 0.0
 foo$NO3=as.numeric(foo$NO3)
 
-foo=cbind(foo,depthz)
-#foo$NO3
-#plot(foo$NO3,-depthz,type="l")
-
-#grid.locator()
-#log <- structure(list(Depth = foo$depthz, Nitrate = foo$NO3, Clay = foo$Clay, .Names #= c("Depth", "NO3-N", "%Clay"), class = "data.frame"))
-
 #melting
 subset=data.frame(foo$depthz,foo$NO3,foo$Clay)#,foo$PH,foo$EC)
-colnames(subset)=c("Depth","NO3-N, ppm","% Clay")#,"pH","EC, uS/cm")
+colnames(subset)=c("Depth","NO3","Clay")#,"pH","EC, uS/cm")
 melted <- melt(subset, id.vars='Depth')
+
+vnames <-list(
+  'NO3' = bquote("NO"[3]*"-N, ppm"),
+  'Clay' = '% Clay')
+
+vlabeller <- function(variable,value){
+  return(vnames[value])
+}
 
 sp <- ggplot(melted, x=value, y=Depth) +
     theme_bw() + 
@@ -35,18 +37,13 @@ sp <- ggplot(melted, x=value, y=Depth) +
     labs(title='') +
     scale_y_reverse(name=("Depth, cm")) + 
     scale_x_continuous(name=("Value")) +
-    facet_grid(. ~ variable, scales='free_x') +
-    theme(strip.text.x = element_text(size = 20,face="bold"),
+    facet_grid(. ~ variable, scales='free_x',labeller=vlabeller) +
+    theme(strip.text.x = element_text(size = 20),
           axis.title.x = element_blank(),
           axis.text.x  = element_text(size=16),
           axis.title.y = element_text(vjust=-0.5,size=20),
           axis.text.y  = element_text(size=16))
 sp
-
-#sp=qplot(foo$NO3, depthz,geom="path")+scale_y_reverse()
-#sp
-#sp=qplot(foo$Clay, depthz,geom="path")+scale_y_reverse()
-#sp
 
 #Clay and NO3 are significantly positively correlated for samples with appreciable NO3
 subse=foo[which(foo$NO3>2.5),]
@@ -57,4 +54,3 @@ subse=foo[which(foo$NO3>2.5),]
 #summary(ee)
 #plot(ee)
 
-#grid.locator()
