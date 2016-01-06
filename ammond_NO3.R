@@ -1,23 +1,31 @@
 library(ggplot2)
 library(reshape2)
+library(plyr)
 library(grid)
 
 #x11()
 foo=read.csv("para_15-10_samples.csv",stringsAsFactors=FALSE)
 corez=read.csv("para_15-10_cores.csv",stringsAsFactors=FALSE)
 
-#create depths scaled by % recovery
+#create sampled depth intervals scaled by Geoprobe % recovery
 scalez=corez$rec[foo$CORE]
 intervalz=foo$BDEPTH-foo$TDEPTH
 sintervalz=intervalz/scalez
-depthz=cumsum(sintervalz)
+#calculate boundaries of sampled intervals
+boundz=cumsum(sintervalz)
+#calculate midpoints (for soil property plots)
+depthz=c()
+last=0
+for(b in boundz[1:20]) {
+  depthz=c(depthz,b-((b-last)/2))
+  last=b
+}
+#depthz # midpoints of each sampled interval, corrected for # recovery
 foo=cbind(foo,depthz)
 
-#convert Non-detectable into zero values
+#convert non-detectable NO3 values into zero values
 foo$NO3[which(foo$NO3=="ND")] = 0.0
 foo$NO3=as.numeric(foo$NO3)
-
-foo=cbind(foo,depthz)
 
 #calculate textures
 lstrat=length(foo$Clay)
@@ -29,38 +37,64 @@ foo=cbind(foo,texturez,thicknezz)
 #grid.locator()
 #log <- structure(list(Depth = foo$depthz, Nitrate = foo$NO3, Clay = foo$Clay, .Names #= c("Depth", "NO3-N", "%Clay"), class = "data.frame"))
 
-ftextures=factor(texturez)
-texture_map=c("Loam"=1,"Loamy Sand"=2,"Sandy Loam"=3,"Silt Loam"=4)
+ftextures=factor(texturez,levels=c("Loamy Sand","Sandy Loam", "Loam", "Silt Loam"))
+texture_map=c("Loamy Sand"=1,"Sandy Loam"=2,"Loam"=3,"Silt Loam"=4)
 ntexture=texture_map[as.character(ftextures)]
 
 #melting
-subset=data.frame(foo$depthz,ntexture,sintervalz, foo$NO3,foo$Clay,foo$PH,foo$EC)
-colnames(subset)=c("Depth","Texture","Thickness","NO3-N, ppm","% Clay","pH","EC, μS/cm")
-melted <- melt(subset, id.vars=c('Depth','Texture','Thickness'))
+subset=data.frame(foo$depthz,ftextures,sintervalz, foo$NO3,foo$Clay,foo$PH,foo$EC,rep(0,length(ntexture)))
+colnames(subset)=c("Depth","Texture2","Thickness","NO3-N, ppm","% Clay","pH","EC, μS/cm","Texture")
+melted <- melt(subset, id.vars=c('Depth','Texture2','Thickness'))
+
+label0r=function(variable, value) {
+  #keyz=c("NO3","Clay","pH","EC","Texture")
+  
+  keyz=c("NO3-N, ppm","% Clay","pH","EC, μS/cm","Texture")
+  labelz=c(bquote("NO3-N, mg/kg","% Clay","pH","EC, uS/cm","Texture"))
+  
+}
+
+mround <- function(x,base){ 
+  base*round(x/base) 
+} 
+
+equal_breaks <- function(n,s,x){
+  function(x){
+    # rescaling
+    d <- s * diff(range(x)) / (1+2*s)
+    round(seq(min(x)+d, max(x)-d, length=n),digits=1)
+  }
+}
+
+blank_data=data.frame(variable=c("N","N",'C','C',"P","P","E","E","T","T"),Depth=0,value=c(0,25,0,25,5,9,0,500,1,2))
 
 #strata from bottom to top
-barg=ggplot()+
-  geom_bar(data=foo,aes(x=foo$depthz,fill=foo$texturez, xlab="Depth, cm"))+
-  coord_flip()+
-  scale_x_reverse(name="Depth, cm")
-barg
+#melted$Thickness = melted$Thickness/max(melted$Depth)
 sp <- ggplot() +
-    theme_bw() + 
-    facet_grid(.~variable, scales='free_x') +
-    geom_path(data=melted,aes(x=value, y=Depth, ylab="Depth, cm")) + 
-    geom_hline(yintercept=cumsum(sintervalz))+
-    labs(title='') +
-    scale_y_reverse(name=("Depth, cm")) + 
-    scale_x_continuous(name=("Value")) +
-    facet_grid(. ~ variable, scales='free_x',labeller=vlabeller) +
-    theme(strip.text.x = element_text(size = 20),
-          axis.title.x = element_blank(),
-          axis.text.x  = element_text(size=16),
-          axis.title.y = element_text(vjust=-0.5,size=20),
-          axis.text.y  = element_text(size=16))
-sp
+  theme_bw() + 
+  geom_bar(data=subset(melted,variable=="Texture"),aes(x=value,y=Thickness,ylab="Depth, cm",fill=Texture2,xmin=-0.5,xmax=0.5),stat="identity")+ 
+  scale_fill_brewer("USDA Soil\nTextural\nClass",direction=1,palette="terrain")+ 
+  geom_path(data=subset(melted,variable!="Texture"),aes(x=value, y=Depth, ylab="Depth, cm",ymin=0,ymax=400))+
+  #geom_blank(data = blank_data, aes(x = value, y = Depth)) +
+  facet_grid(.~variable, scales='free_x',space='fixed')+#,labeller=label0r) +
+  expand_limits(x=c(0,0))+
+  geom_hline(yintercept=c(0,boundz),linetype="dashed",colour="#AAAAAA")+
+  labs(title='') +
+  scale_y_reverse(name=("Depth, cm")) + 
+  scale_x_continuous(name=("Value"),expand=c(0,0))+#,breaks=equal_breaks(n=4,s=0.1)) +
+  theme(strip.text.x = element_text(size = 14),
+        axis.title.x = element_blank(),
+        axis.text.x  = element_text(size=12),
+        axis.title.y = element_text(vjust=-0.5,size=14),
+        axis.text.y  = element_text(size=12),
+        panel.margin = unit(1, "lines"))
+g1=ggplotGrob(sp)
+g1$grobs[[17]]<- nullGrob() #Remove X axis on texture stacked bar
+grid.draw(g1)
 
-ggplot()+geom_bar(data=foo,
+sp2 <- ggplot(melted,aes(x=value, y=Depth, ylab="Depth, cm"))+facet_grid(.~variable,scales="free_x")
+f1 = sp2+geom_bar(data=subset(melted,variable=='Thickness'),stat="identity")
+f1
 
 #sp=qplot(foo$NO3, depthz,geom="path")+scale_y_reverse()
 #sp
