@@ -3,7 +3,6 @@ library(reshape2)
 library(grid)
 
 #x11()
-#your data, note changed field names
 foo=read.csv("para_15-10_samples.csv",stringsAsFactors=FALSE)
 corez=read.csv("para_15-10_cores.csv",stringsAsFactors=FALSE)
 
@@ -18,22 +17,33 @@ foo=cbind(foo,depthz)
 foo$NO3[which(foo$NO3=="ND")] = 0.0
 foo$NO3=as.numeric(foo$NO3)
 
+foo=cbind(foo,depthz)
+
+#calculate textures
+lstrat=length(foo$Clay)
+texturez=mapply(getTexture,foo$Sand,foo$Clay,foo$Silt)
+foo=cbind(foo,texturez,thicknezz)
+#foo$NO3
+#plot(foo$NO3,-depthz,type="l")
+
+#grid.locator()
+#log <- structure(list(Depth = foo$depthz, Nitrate = foo$NO3, Clay = foo$Clay, .Names #= c("Depth", "NO3-N", "%Clay"), class = "data.frame"))
+
+ftextures=factor(texturez)
+texture_map=c("Loam"=1,"Loamy Sand"=2,"Sandy Loam"=3,"Silt Loam"=4)
+ntexture=texture_map[as.character(ftextures)]
+
 #melting
-subset=data.frame(foo$depthz,foo$NO3,foo$Clay)#,foo$PH,foo$EC)
-colnames(subset)=c("Depth","NO3","Clay")#,"pH","EC, uS/cm")
-melted <- melt(subset, id.vars='Depth')
+subset=data.frame(foo$depthz,ntexture,cumsum(sintervalz)-sintervalz[1], foo$NO3,foo$Clay,foo$PH,foo$EC)
+colnames(subset)=c("Depth","Texture","Thickness","NO3-N, ppm","% Clay","pH","EC, μS/cm")
+melted <- melt(subset, id.vars=c('Depth','Texture','Thickness'))
 
-vnames <-list(
-  'NO3' = bquote("NO"[3]*"-N, ppm"),
-  'Clay' = '% Clay')
-
-vlabeller <- function(variable,value){
-  return(vnames[value])
-}
-
-sp <- ggplot(melted, x=value, y=Depth) +
+#strata from bottom to top
+sp <- ggplot(melted) +
     theme_bw() + 
-    geom_path(aes(value,Depth,ylab="Depth, cm")) + 
+    facet_grid(.~variable, scales='free_x') +
+    geom_path(aes(x=value, y=Depth, ylab="Depth, cm")) + 
+    geom_hline(yintercept=depthz)+
     labs(title='') +
     scale_y_reverse(name=("Depth, cm")) + 
     scale_x_continuous(name=("Value")) +
@@ -44,6 +54,15 @@ sp <- ggplot(melted, x=value, y=Depth) +
           axis.title.y = element_text(vjust=-0.5,size=20),
           axis.text.y  = element_text(size=16))
 sp
+
+ggplot()+geom_bar(data=foo,aes(x=foo$depthz,fill=foo$texturez, xlab="Depth, cm"))+
+  coord_flip()+
+  scale_x_reverse(name="Depth, cm")
+
+#sp=qplot(foo$NO3, depthz,geom="path")+scale_y_reverse()
+#sp
+#sp=qplot(foo$Clay, depthz,geom="path")+scale_y_reverse()
+#sp
 
 #Clay and NO3 are significantly positively correlated for samples with appreciable NO3
 subse=foo[which(foo$NO3>2.5),]
